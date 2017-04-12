@@ -24,6 +24,7 @@
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 
 import logging
+import os
 import time
 
 import click
@@ -106,17 +107,27 @@ def copy_index(index_from, index_to, connect_url, batch, autofix):
 )
 @click.argument('index_url')
 @click.option(
+    '-o',
+    '--out-dir',
+    help='Directory to put the files into, will be created if does not exist.',
+    default='.',
+)
+@click.option(
     '-b',
     '--batch',
     help='Size of the batches to use',
-    default=500,
+    default=1000,
 )
-def dump_index(index_url, batch):
+def dump_index(index_url, out_dir, batch):
     start_time = time.time()
     connect_url, index_name = utils.split_index_url(index_url)
     cli = Elasticsearch([connect_url], verify_certs=False)
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    os.chdir(out_dir)
     utils._dump_index(
-        index_url=index_name,
+        index_name=index_name,
         cli=cli,
         batch=batch,
     )

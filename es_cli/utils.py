@@ -31,8 +31,8 @@ from functools import wraps
 
 import click
 from elasticsearch import Elasticsearch
+from elasticsearch.exceptions import RequestError
 from elasticsearch.helpers import reindex, scan
-
 
 _ERROR1_RE = re.compile(u'mapper \[(?P<field_name>[^]]+)\]')
 _BAD_FIELDS_ACK_RESPONSES = {}
@@ -171,7 +171,14 @@ def _get_dump_index_name(dump_dir):
 def _get_dump_files(dump_dir, index_name):
     _, _, files = next(os.walk(dump_dir), (None, None, []))
     dump_file_match = re.compile(index_name + '-\d+.json')
-    dump_files = [fname for fname in files if dump_file_match.match(fname)]
+    dump_files = [
+        os.path.join(dump_dir, fname) for fname
+        in files
+        if dump_file_match.match(fname)
+    ]
+    dump_files.sort(
+        key=lambda x: int(x.rsplit('-', 1)[-1].rsplit('.', 1)[0])
+    )
     return dump_files
 
 
@@ -185,7 +192,29 @@ def _load_index(index, cli, dump_dir='.', with_create=True):
         index_metadata = json.load(
             open(os.path.join(dump_dir, '%s-metadata.json' % old_index_name))
         )
-        cli.indices.create(index=index, body=index_metadata[old_index_name])
+        try:
+            cli.indices.create(
+                index=index,
+                body=index_metadata[old_index_name],
+            )
+        except RequestError as err:
+            if len(err.args) < 1:
+                raise
+
+            if err.args[1] != 'index_already_exists_exception':
+                raise
+
+            if not click.confirm(
+                'Index %s already exists, do you want me to recreate it?'
+                % index
+            ):
+                raise
+
+            cli.indices.delete(index=index)
+            cli.indices.create(
+                index=index,
+                body=index_metadata[old_index_name],
+            )
 
     dump_fnames = _get_dump_files(dump_dir, old_index_name)
     loaded_docs = 0
@@ -219,28 +248,28 @@ def _load_file_to_index(dump_fd, index, cli):
     return loaded_docs
 
 
-def _dump_index(index, cli, batch=1000, with_create=True):
-    dump_fname = '%s-metadata.json' % index
-    click.echo('Dumping index %s info at %s' % (index, dump_fname))
-    index_info = cli.indices.get(index)
+def _dump_index(index_name, cli, batch=1000):
+    dump_fname = '%s-metadata.json' % index_name
+    click.echo('Dumping index %s info at %s' % (index_name, dump_fname))
+    index_info = cli.indices.get(index_name)
     with open(dump_fname, 'w') as dump_fd:
         dump_fd.write(json.dumps(index_info, indent=4))
 
-    click.echo('Dumping %s in batches of %d' % (index, batch))
+    click.echo('Dumping %s in batches of %d' % (index_name, batch))
     try:
         dump_file_index = 0
         dumped_docs = 0
-        dump_fname = '%s-%d.json' % (index, dump_file_index)
+        dump_fname = '%s-%d.json' % (index_name, dump_file_index)
         dump_fd = open(dump_fname, 'w')
         click.echo('    Creating file %s' % dump_fname)
-        for result in scan(cli, index=index, size=batch):
+        for result in scan(cli, index=index_name, size=batch):
             dump_fd.write(json.dumps(result) + '\n')
             dumped_docs += 1
             if dumped_docs >= batch:
                 dump_file_index += 1
                 dumped_docs = 0
                 dump_fd.close()
-                dump_fname = '%s-%d.json' % (index, dump_file_index)
+                dump_fname = '%s-%d.json' % (index_name, dump_file_index)
                 dump_fd = open(dump_fname, 'w')
                 click.echo('    Creating file %s' % dump_fname)
     finally:
