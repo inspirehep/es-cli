@@ -267,7 +267,7 @@ def remap(name, mapping, connect_url, autofix):
         scroll='5m',
         bulk_kwargs={
             'params': {
-                'request_timeout': Timeout(read=30),
+                'request_timeout': Timeout(read=60),
             },
         },
     )
@@ -310,7 +310,7 @@ def remap(name, mapping, connect_url, autofix):
         scroll='5m',
         bulk_kwargs={
             'params': {
-                'request_timeout': Timeout(read=30),
+                'request_timeout': Timeout(read=60),
             },
         },
     )
