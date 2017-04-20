@@ -239,14 +239,21 @@ def remap(name, mapping, connect_url, autofix):
     with open(mapping) as mapping_fd:
         body = mapping_fd.read()
 
+    click.echo(
+        '(Re)Creating temporary index (mapping and aliases), named %s'
+        % tmp_index
+    )
     cli.indices.delete(index=tmp_index, ignore=[400, 404])
-    cli.indices.create(index=tmp_index)
+    cli.indices.create(
+        index=tmp_index,
+        body=body,
+    )
     for alias in aliases:
         cli.indices.put_alias(index=tmp_index, name=alias)
 
     click.echo(
         'Created temporary index, will start dumping the data from the old '
-        'one'
+        'one, this might take some time (~40 docs/sec).'
     )
     click.confirm('Do you want to continue?', abort=True)
     reindex(
@@ -264,12 +271,12 @@ def remap(name, mapping, connect_url, autofix):
         },
     )
 
-    click.echo('Populated temporary index, will delete original index')
+    click.echo(
+        'Populated temporary index, will recreate original index (this will '
+        'remove it\'s contents).'
+    )
     click.confirm('Do you want to continue?', abort=True)
     cli.indices.delete(name)
-
-    click.echo('Deleted original index, will recreate with the new mapping')
-    click.confirm('Do you want to continue?', abort=True)
     cli.indices.create(
         index=name,
         body=body,
@@ -278,8 +285,8 @@ def remap(name, mapping, connect_url, autofix):
         cli.indices.put_alias(index=name, name=alias)
 
     click.echo(
-        'Recreated original index, will repopulate with the data from the '
-        'temporary one'
+        'Recreated original index (mapping and aliases), will repopulate '
+        'with the data from the temporary one.'
     )
     click.confirm('Do you want to continue?', abort=True)
     reindex(
@@ -297,7 +304,7 @@ def remap(name, mapping, connect_url, autofix):
         },
     )
 
-    click.echo('Original index repopulated, will remove the temporary index')
+    click.echo('Original index repopulated, will cleanup the temporary index.')
     click.confirm('Do you want to continue?', abort=True)
     cli.indices.delete(tmp_index)
     click.echo('Done')
