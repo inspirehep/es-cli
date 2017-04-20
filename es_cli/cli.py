@@ -30,7 +30,6 @@ from urllib3.util.timeout import Timeout
 
 import click
 from elasticsearch import Elasticsearch
-from elasticsearch.helpers import reindex
 
 import utils
 
@@ -256,7 +255,9 @@ def remap(name, mapping, connect_url, autofix):
         'one, this might take some time (~40 docs/sec).'
     )
     click.confirm('Do you want to continue?', abort=True)
-    reindex(
+    errors_file = 'reindex_%s_errors.json' % tmp_index
+    _, errors = utils._reindex(
+        errors_file=errors_file,
         client=cli,
         source_index=name,
         target_index=tmp_index,
@@ -270,6 +271,14 @@ def remap(name, mapping, connect_url, autofix):
             },
         },
     )
+    if errors:
+        click.confirm(
+            (
+                'Got %d errors, saved in the file "%s", '
+                'want to continue?'
+            ) % (len(errors), errors_file),
+            abort=True,
+        )
 
     click.echo(
         'Populated temporary index, will recreate original index (this will '
@@ -289,7 +298,9 @@ def remap(name, mapping, connect_url, autofix):
         'with the data from the temporary one.'
     )
     click.confirm('Do you want to continue?', abort=True)
-    reindex(
+    errors_file = 'reindex_%s_errors.json' % name
+    _, errors = utils._reindex(
+        errors_file=errors_file,
         client=cli,
         source_index=tmp_index,
         target_index=name,
@@ -303,6 +314,15 @@ def remap(name, mapping, connect_url, autofix):
             },
         },
     )
+
+    if errors:
+        click.confirm(
+            (
+                'Got %d errors, saved in the file "%s", '
+                'want to continue?'
+            ) % (len(errors), errors_file),
+            abort=True,
+        )
 
     click.echo('Original index repopulated, will cleanup the temporary index.')
     click.confirm('Do you want to continue?', abort=True)

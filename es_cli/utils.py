@@ -113,12 +113,43 @@ def with_two_connections(func):
     return _decorator
 
 
+def save_errors(errors, dst_file_name='errors.json'):
+    errors = [
+        err['index']
+        for err in errors
+    ]
+    errors = json.dumps(errors)
+    with open(dst_file_name, 'w') as errors_fd:
+        errors_fd.write(errors)
+
+
+def _reindex(*args, **kwargs):
+    errors_file = kwargs.pop('errors_file', 'errors.json')
+    start_time = time.time()
+    tot_docs, errors = reindex(*args, **kwargs)
+    end_time = time.time()
+    click.echo(
+        'Reindexed %s docs in %ds' % (tot_docs, end_time - start_time)
+    )
+    click.echo(
+        '%s docs per second' % (tot_docs / (end_time - start_time))
+    )
+    click.echo('Failed docs: %d' % len(errors))
+    if errors:
+        save_errors(errors, errors_file)
+        click.echo(
+            'Written errors list in %s file (in case you want '
+            'process them later).' % errors_file
+        )
+
+    return tot_docs, errors
+
+
 def _copy_index(
     index_from, index_to, connect_url, chunk, autofix, interactive=True,
 ):
-    start_time = time.time()
     cli = Elasticsearch([connect_url], verify_certs=False)
-    errors = reindex(
+    tot_docs, errors = _reindex(
         client=cli,
         source_index=index_from,
         target_index=index_to,
@@ -134,26 +165,6 @@ def _copy_index(
             },
         },
     )
-    end_time = time.time()
-    click.echo(
-        'Reindexed %s records in %ds' % (errors[0], end_time - start_time)
-    )
-    click.echo(
-        '%s records per second' % (errors[0] / (end_time - start_time))
-    )
-    click.echo('Failed records: %d' % len(errors[1]))
-    if errors[1]:
-        errors = [
-            err['index']
-            for err in errors[1]
-        ]
-        errors = json.dumps(errors)
-        with open('errors.json', 'w') as errors_fd:
-            errors_fd.write(errors)
-        click.echo(
-            'Written errors list in errors.json file (in case you want '
-            'process them later).'
-        )
 
 
 def _get_dump_index_name(dump_dir):
