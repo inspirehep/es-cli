@@ -28,6 +28,7 @@ import re
 import time
 import urlparse
 from functools import wraps
+from urllib3.util.timeout import Timeout
 
 import click
 from elasticsearch import Elasticsearch
@@ -128,7 +129,10 @@ def _copy_index(
         bulk_kwargs={
             'raise_on_error': False,
             'stats_only': False,
-        }
+            'params': {
+                'request_timeout': Timeout(read=30),
+            },
+        },
     )
     end_time = time.time()
     click.echo(

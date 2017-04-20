@@ -26,6 +26,7 @@
 import logging
 import os
 import time
+from urllib3.util.timeout import Timeout
 
 import click
 from elasticsearch import Elasticsearch
@@ -256,6 +257,11 @@ def remap(name, mapping, connect_url, autofix):
         target_client=None,
         chunk_size=500,
         scroll='5m',
+        bulk_kwargs={
+            'params': {
+                'request_timeout': Timeout(read=30),
+            },
+        },
     )
 
     click.echo('Populated temporary index, will delete original index')
@@ -284,6 +290,11 @@ def remap(name, mapping, connect_url, autofix):
         target_client=None,
         chunk_size=500,
         scroll='5m',
+        bulk_kwargs={
+            'params': {
+                'request_timeout': Timeout(read=30),
+            },
+        },
     )
 
     click.echo('Original index repopulated, will remove the temporary index')
