@@ -28,12 +28,12 @@ import re
 import time
 import urlparse
 from functools import wraps
-from urllib3.util.timeout import Timeout
 
 import click
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import RequestError
 from elasticsearch.helpers import reindex, scan
+from urllib3.util.timeout import Timeout
 
 _ERROR1_RE = re.compile(u'mapper \[(?P<field_name>[^]]+)\]')
 _BAD_FIELDS_ACK_RESPONSES = {}
@@ -41,6 +41,8 @@ _TRY_TO_FIX_RESPONSES = {}
 
 
 def split_index_url(index_url):
+    """Split an index url (complete or not) into the server and index name.
+    """
     index_name = urlparse.urlparse(index_url).path.rsplit('/')[-1]
     if not index_name:
         raise Exception("No index passed for url %s." % index_url)

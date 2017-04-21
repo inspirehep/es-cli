@@ -26,10 +26,10 @@
 import logging
 import os
 import time
-from urllib3.util.timeout import Timeout
 
 import click
 from elasticsearch import Elasticsearch
+from urllib3.util.timeout import Timeout
 
 import utils
 
