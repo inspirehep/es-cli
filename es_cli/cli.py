@@ -32,7 +32,7 @@ import click
 from elasticsearch import Elasticsearch
 from urllib3.util.timeout import Timeout
 
-import utils
+from . import utils
 
 DEFAULT_NODE = ('localhost', 9200)
 
