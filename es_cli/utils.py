@@ -127,12 +127,15 @@ def _reindex(*args, **kwargs):
     errors_file = kwargs.pop('errors_file', 'errors.json')
     start_time = time.time()
     tot_docs, errors = reindex(*args, **kwargs)
+    # reindex return '0' when there are no errors, but a list of errors
+    # otherwise, here I just normalize to list
+    errors = errors or []
     end_time = time.time()
     click.echo(
         'Reindexed %s docs in %ds' % (tot_docs, end_time - start_time)
     )
     click.echo(
-        '%s docs per second' % (tot_docs / (end_time - start_time))
+        '%.0f docs per second' % (tot_docs / (end_time - start_time))
     )
     click.echo('Failed docs: %d' % len(errors))
     if errors:
