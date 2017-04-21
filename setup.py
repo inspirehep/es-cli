@@ -37,6 +37,7 @@ def do_setup(url=URL):
             'autosemver',
             'click',
             'elasticsearch',
+            'six',
         ],
         license='GPLv2',
         name='es-cli',

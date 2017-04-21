@@ -1,1 +1,4 @@
-jsonschema
+autosemver
+click
+elasticsearch
+six

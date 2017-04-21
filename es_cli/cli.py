@@ -24,6 +24,7 @@
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 from __future__ import absolute_import, division, print_function
 
+import json
 import logging
 import os
 import time
@@ -217,7 +218,8 @@ def delete_index(name, connect_url):
     '-m',
     '--mapping',
     default=None,
-    help='Mapping file for the index.',
+    help='Mapping file for the index, you can repeat it for many.',
+    multiple=True,
 )
 @click.argument('index_url')
 def remap(mapping, index_url):
@@ -229,11 +231,16 @@ def remap(mapping, index_url):
         index=orig_index
     ).get(orig_index, {}).get('aliases', {}).keys()
 
-    with open(mapping) as mapping_fd:
-        body = mapping_fd.read()
+    mappings = {}
+    for mapping_fname in mapping:
+        with open(mapping_fname) as mapping_fd:
+            mapping_dict = json.loads(mapping_fd.read())
+            mappings.update(mapping_dict['mappings'])
+
+    body = json.dumps({'mappings': mappings})
 
     click.echo(
-        '(Re)Creating temporary index (mapping and aliases), named %s'
+        '(Re)Creating temporary index (mappings), named %s'
         % tmp_index
     )
     cli.indices.delete(index=tmp_index, ignore=[400, 404])
@@ -286,7 +293,7 @@ def remap(mapping, index_url):
     )
 
     click.echo(
-        'Recreated original index (mapping and aliases), will repopulate '
+        'Recreated original index (mappings), will repopulate '
         'with the data from the temporary one.'
     )
     click.confirm('Do you want to continue?', abort=True)
