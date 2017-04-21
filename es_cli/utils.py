@@ -22,17 +22,21 @@
 # In applying this license, CERN does not
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
+from __future__ import absolute_import, division, print_function
+
 import json
 import os
 import re
 import time
-import urlparse
 from functools import wraps
 
 import click
 from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import RequestError
 from elasticsearch.helpers import reindex, scan
+from urllib3.util.timeout import Timeout
+
+from six.moves import urllib
 
 _ERROR1_RE = re.compile(u'mapper \[(?P<field_name>[^]]+)\]')
 _BAD_FIELDS_ACK_RESPONSES = {}
@@ -40,7 +44,9 @@ _TRY_TO_FIX_RESPONSES = {}
 
 
 def split_index_url(index_url):
-    index_name = urlparse.urlparse(index_url).path.rsplit('/')[-1]
+    """Split an index url (complete or not) into the server and index name.
+    """
+    index_name = urllib.parse.urlparse(index_url).path.rsplit('/')[-1]
     if not index_name:
         raise Exception("No index passed for url %s." % index_url)
 
@@ -50,34 +56,45 @@ def split_index_url(index_url):
 
 
 def with_two_connections(func):
-    """Handles the passing of the two from/to connection urls.
+    """Handles the passing of the two from/to index connection urls.
 
     For example:
-        from_connection='http://somewhere/index1'
-        to_connection='index2'
+        from_index='http://somewhere/index1'
+        to_index='index2'
 
     Or:
-        from_connection='http://somewhere/index1'
-        to_connection='http://somewhere.else/index2'
+        from_index='http://somewhere/index1'
+        to_index='http://somewhere.else/index2'
+
+    will be transformed to the params:
+        from_cli=Elasticsearch(['http://somewhere'])
+        from_index='index1'
+        to_cli=Elasticsearch(['http://somewhere'])
+        to_index='index2'
+
+    and respectively:
+        from_cli=Elasticsearch(['http://somewhere'])
+        from_index='index1'
+        to_cli=Elasticsearch(['http://somewhere.else'])
+        to_index='index2'
 
 
-    If the hosts are the same for both connections, it will return the same
-    connection object for them.
+    If the hosts are the same for both index connections, it will return the
+    same connection object for them.
     """
-
     @wraps(func)
     def _decorator(*args, **kwargs):
-        from_connection = kwargs.get('from_connection')
+        from_connection = kwargs.get('from_index')
         if not from_connection:
             raise TypeError(
-                '%s takes at least a "from_connection" argument that was not '
+                '%s takes at least a "from_index" argument that was not '
                 'passed' % func
             )
 
-        to_connection = kwargs.get('to_connection')
+        to_connection = kwargs.get('to_index')
         if not to_connection:
             raise TypeError(
-                '%s takes at least a "to_connection" argument that was not '
+                '%s takes at least a "to_index" argument that was not '
                 'passed' % func
             )
 
@@ -88,21 +105,21 @@ def with_two_connections(func):
             kwargs.get('to_index', ''),
         )
 
-        from_connection = Elasticsearch(
+        from_cli = Elasticsearch(
             [from_connection_url],
             verify_certs=False,
         )
         if from_connection_url == to_connection_url:
-            to_connection = from_connection
+            to_cli = from_cli
         else:
-            to_connection = Elasticsearch(
+            to_cli = Elasticsearch(
                 [to_connection],
                 verify_certs=False,
             )
 
         kwargs.update({
-            'from_connection': from_connection,
-            'to_connection': to_connection,
+            'from_cli': from_cli,
+            'to_cli': to_cli,
             'from_index': from_index,
             'to_index': to_index,
         })
@@ -112,12 +129,46 @@ def with_two_connections(func):
     return _decorator
 
 
+def save_errors(errors, dst_file_name='errors.json'):
+    errors = [
+        err['index']
+        for err in errors
+    ]
+    errors = json.dumps(errors)
+    with open(dst_file_name, 'w') as errors_fd:
+        errors_fd.write(errors)
+
+
+def _reindex(*args, **kwargs):
+    errors_file = kwargs.pop('errors_file', 'errors.json')
+    start_time = time.time()
+    tot_docs, errors = reindex(*args, **kwargs)
+    # reindex return '0' when there are no errors, but a list of errors
+    # otherwise, here I just normalize to list
+    errors = errors or []
+    end_time = time.time()
+    click.echo(
+        'Reindexed %s docs in %ds' % (tot_docs, end_time - start_time)
+    )
+    click.echo(
+        '%.0f docs per second' % (tot_docs / (end_time - start_time))
+    )
+    click.echo('Failed docs: %d' % len(errors))
+    if errors:
+        save_errors(errors, errors_file)
+        click.echo(
+            'Written errors list in %s file (in case you want '
+            'process them later).' % errors_file
+        )
+
+    return tot_docs, errors
+
+
 def _copy_index(
     index_from, index_to, connect_url, chunk, autofix, interactive=True,
 ):
-    start_time = time.time()
     cli = Elasticsearch([connect_url], verify_certs=False)
-    errors = reindex(
+    tot_docs, errors = _reindex(
         client=cli,
         source_index=index_from,
         target_index=index_to,
@@ -128,28 +179,11 @@ def _copy_index(
         bulk_kwargs={
             'raise_on_error': False,
             'stats_only': False,
-        }
+            'params': {
+                'request_timeout': Timeout(read=30),
+            },
+        },
     )
-    end_time = time.time()
-    click.echo(
-        'Reindexed %s records in %ds' % (errors[0], end_time - start_time)
-    )
-    click.echo(
-        '%s records per second' % (errors[0] / (end_time - start_time))
-    )
-    click.echo('Failed records: %d' % len(errors[1]))
-    if errors[1]:
-        errors = [
-            err['index']
-            for err in errors[1]
-        ]
-        errors = json.dumps(errors)
-        with open('errors.json', 'w') as errors_fd:
-            errors_fd.write(errors)
-        click.echo(
-            'Written errors list in errors.json file (in case you want '
-            'process them later).'
-        )
 
 
 def _get_dump_index_name(dump_dir):
@@ -342,9 +376,11 @@ def _try_to_migrate(index_from, index_to, cli, recid, error, yesall=False):
 
     fn_name = '_handle_' + err_type
     if fn_name not in globals():
-        print "I don't know how to handle %s, skipping record %s" % (
-            err_type,
-            recid,
+        print(
+            "I don't know how to handle %s, skipping record %s" % (
+                err_type,
+                recid,
+            )
         )
         return None
 

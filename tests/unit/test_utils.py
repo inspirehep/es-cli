@@ -22,6 +22,7 @@
 # In applying this license, CERN does not
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
+from __future__ import absolute_import, division, print_function
 
 import pytest
 
@@ -35,9 +36,14 @@ from es_cli import utils
             'https://some:thing@some.host/my/index',
             ('https://some:thing@some.host/my', 'index'),
         ),
+        (
+            'index',
+            ('', 'index'),
+        ),
     ],
     ids=[
-        'proto, user, pass, host, extra path and index name'
+        'proto, user, pass, host, extra path and index name',
+        'only index name',
     ]
 )
 def test_split_index_url(index_url, expected):
