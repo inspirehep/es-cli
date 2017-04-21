@@ -203,37 +203,30 @@ def delete_index(name, connect_url):
     cli.indices.delete(index=name)
 
 
-@click.command()
-@click.argument('name')
+@click.command(
+    short_help='Remap an index.',
+    help=(
+        'Remaps a full index with the given mapping. The index_url must be a '
+        'a full url to it, for example:\n\n'
+        '    https://user:pass@my.es/index_name\n\n'
+        'It will output any errors in the remapping in json files.'
+    )
+)
 @click.option(
     '-m',
     '--mapping',
     default=None,
     help='Mapping file for the index.',
 )
-@click.option(
-    '-c',
-    '--connect-url',
-    help='Server to connect to, in the form http://user:pass@server:port',
-    default=DEFAULT_NODE[0],
-)
-@click.option(
-    '-a',
-    '--autofix',
-    help='Try to fix any failed record after copying them over.',
-    default=False,
-)
-def remap(name, mapping, connect_url, autofix):
+@click.argument('index_url')
+def remap(mapping, index_url):
+    connect_url, orig_index = utils.split_index_url(index_url)
     cli = Elasticsearch([connect_url], verify_certs=False)
-    tmp_index = 'remapping_tmp_' + name
+    tmp_index = 'remapping_tmp_' + orig_index
 
     aliases = cli.indices.get_alias(
-        index=name
-    ).get(
-        name, {}
-    ).get(
-        'aliases', {}
-    ).keys()
+        index=orig_index
+    ).get(orig_index, {}).get('aliases', {}).keys()
 
     with open(mapping) as mapping_fd:
         body = mapping_fd.read()
@@ -247,8 +240,6 @@ def remap(name, mapping, connect_url, autofix):
         index=tmp_index,
         body=body,
     )
-    for alias in aliases:
-        cli.indices.put_alias(index=tmp_index, name=alias)
 
     click.echo(
         'Created temporary index, will start dumping the data from the old '
@@ -259,7 +250,7 @@ def remap(name, mapping, connect_url, autofix):
     _, errors = utils._reindex(
         errors_file=errors_file,
         client=cli,
-        source_index=name,
+        source_index=orig_index,
         target_index=tmp_index,
         query=None,
         target_client=None,
@@ -273,10 +264,7 @@ def remap(name, mapping, connect_url, autofix):
     )
     if errors:
         click.confirm(
-            (
-                'Got %d errors, saved in the file "%s", '
-                'want to continue?'
-            ) % (len(errors), errors_file),
+            'There were some errors, want to continue?',
             abort=True,
         )
 
@@ -285,25 +273,28 @@ def remap(name, mapping, connect_url, autofix):
         'remove it\'s contents).'
     )
     click.confirm('Do you want to continue?', abort=True)
-    cli.indices.delete(name)
+    cli.indices.delete(orig_index)
+
+    click.echo('Adding aliases (if any) to the temporary index.')
+    for alias in aliases:
+        cli.indices.put_alias(index=tmp_index, name=alias)
+
     cli.indices.create(
-        index=name,
+        index=orig_index,
         body=body,
     )
-    for alias in aliases:
-        cli.indices.put_alias(index=name, name=alias)
 
     click.echo(
         'Recreated original index (mapping and aliases), will repopulate '
         'with the data from the temporary one.'
     )
     click.confirm('Do you want to continue?', abort=True)
-    errors_file = 'reindex_%s_errors.json' % name
+    errors_file = 'reindex_%s_errors.json' % orig_index
     _, errors = utils._reindex(
         errors_file=errors_file,
         client=cli,
         source_index=tmp_index,
-        target_index=name,
+        target_index=orig_index,
         query=None,
         target_client=None,
         chunk_size=500,
@@ -314,19 +305,18 @@ def remap(name, mapping, connect_url, autofix):
             },
         },
     )
-
     if errors:
         click.confirm(
-            (
-                'Got %d errors, saved in the file "%s", '
-                'want to continue?'
-            ) % (len(errors), errors_file),
+            'There were some errors, want to continue?',
             abort=True,
         )
 
     click.echo('Original index repopulated, will cleanup the temporary index.')
     click.confirm('Do you want to continue?', abort=True)
     cli.indices.delete(tmp_index)
+    click.echo('Restoring alias on the original index.')
+    for alias in aliases:
+        cli.indices.put_alias(index=orig_index, name=alias)
     click.echo('Done')
 
 
