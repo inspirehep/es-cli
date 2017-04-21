@@ -53,34 +53,45 @@ def split_index_url(index_url):
 
 
 def with_two_connections(func):
-    """Handles the passing of the two from/to connection urls.
+    """Handles the passing of the two from/to index connection urls.
 
     For example:
-        from_connection='http://somewhere/index1'
-        to_connection='index2'
+        from_index='http://somewhere/index1'
+        to_index='index2'
 
     Or:
-        from_connection='http://somewhere/index1'
-        to_connection='http://somewhere.else/index2'
+        from_index='http://somewhere/index1'
+        to_index='http://somewhere.else/index2'
+
+    will be transformed to the params:
+        from_cli=Elasticsearch(['http://somewhere'])
+        from_index='index1'
+        to_cli=Elasticsearch(['http://somewhere'])
+        to_index='index2'
+
+    and respectively:
+        from_cli=Elasticsearch(['http://somewhere'])
+        from_index='index1'
+        to_cli=Elasticsearch(['http://somewhere.else'])
+        to_index='index2'
 
 
-    If the hosts are the same for both connections, it will return the same
-    connection object for them.
+    If the hosts are the same for both index connections, it will return the
+    same connection object for them.
     """
-
     @wraps(func)
     def _decorator(*args, **kwargs):
-        from_connection = kwargs.get('from_connection')
+        from_connection = kwargs.get('from_index')
         if not from_connection:
             raise TypeError(
-                '%s takes at least a "from_connection" argument that was not '
+                '%s takes at least a "from_index" argument that was not '
                 'passed' % func
             )
 
-        to_connection = kwargs.get('to_connection')
+        to_connection = kwargs.get('to_index')
         if not to_connection:
             raise TypeError(
-                '%s takes at least a "to_connection" argument that was not '
+                '%s takes at least a "to_index" argument that was not '
                 'passed' % func
             )
 
@@ -91,21 +102,21 @@ def with_two_connections(func):
             kwargs.get('to_index', ''),
         )
 
-        from_connection = Elasticsearch(
+        from_cli = Elasticsearch(
             [from_connection_url],
             verify_certs=False,
         )
         if from_connection_url == to_connection_url:
-            to_connection = from_connection
+            to_cli = from_cli
         else:
-            to_connection = Elasticsearch(
+            to_cli = Elasticsearch(
                 [to_connection],
                 verify_certs=False,
             )
 
         kwargs.update({
-            'from_connection': from_connection,
-            'to_connection': to_connection,
+            'from_cli': from_cli,
+            'to_cli': to_cli,
             'from_index': from_index,
             'to_index': to_index,
         })
