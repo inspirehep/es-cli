@@ -22,11 +22,12 @@
 # In applying this license, CERN does not
 # waive the privileges and immunities granted to it by virtue of its status
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
+from __future__ import absolute_import, division, print_function
+
 import json
 import os
 import re
 import time
-import urlparse
 from functools import wraps
 
 import click
@@ -34,6 +35,8 @@ from elasticsearch import Elasticsearch
 from elasticsearch.exceptions import RequestError
 from elasticsearch.helpers import reindex, scan
 from urllib3.util.timeout import Timeout
+
+from six.moves import urllib
 
 _ERROR1_RE = re.compile(u'mapper \[(?P<field_name>[^]]+)\]')
 _BAD_FIELDS_ACK_RESPONSES = {}
@@ -43,7 +46,7 @@ _TRY_TO_FIX_RESPONSES = {}
 def split_index_url(index_url):
     """Split an index url (complete or not) into the server and index name.
     """
-    index_name = urlparse.urlparse(index_url).path.rsplit('/')[-1]
+    index_name = urllib.parse.urlparse(index_url).path.rsplit('/')[-1]
     if not index_name:
         raise Exception("No index passed for url %s." % index_url)
 
@@ -373,9 +376,11 @@ def _try_to_migrate(index_from, index_to, cli, recid, error, yesall=False):
 
     fn_name = '_handle_' + err_type
     if fn_name not in globals():
-        print "I don't know how to handle %s, skipping record %s" % (
-            err_type,
-            recid,
+        print(
+            "I don't know how to handle %s, skipping record %s" % (
+                err_type,
+                recid,
+            )
         )
         return None
 
