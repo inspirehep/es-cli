@@ -216,7 +216,7 @@ def _get_dump_files(dump_dir, index_name):
     return dump_files
 
 
-def _load_index(index, cli, dump_dir='.', with_create=True):
+def _load_index(index, cli, dump_dir='.', with_create=True, yes_all=False):
     click.echo(
         'Loading dump from dir %s into index %s' % (dump_dir, index)
     )
@@ -238,7 +238,7 @@ def _load_index(index, cli, dump_dir='.', with_create=True):
             if err.args[1] != 'index_already_exists_exception':
                 raise
 
-            if not click.confirm(
+            if not yes_all and not click.confirm(
                 'Index %s already exists, do you want me to recreate it?'
                 % index
             ):
