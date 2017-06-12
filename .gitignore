@@ -108,3 +108,9 @@ selenium-report.html
 
 # Twisted
 twistd.pid
+
+# Build artifacts
+AUTHORS
+CHANGELOG
+docs/_build
+docs/_source
