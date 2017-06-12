@@ -38,6 +38,32 @@ from . import utils
 DEFAULT_NODE = ('localhost', 9200)
 
 
+def _merge_mapping_files(mapping_file_paths):
+    mappings = [
+        json.loads(open(mapping_fname).read())
+        for mapping_fname in mapping_file_paths
+    ]
+    index_body, overwritten_fields = utils.merge_index_bodies(mappings)
+    if overwritten_fields:
+        click.confirm(
+            (
+                'The following fields conflicted while merging the multiple '
+                'mappings, will use the latest instance of them:\n    {fields}'
+                '\n\nFull merged index body:\n{body}\n'
+                'Do you want to continue?'
+            ).format(
+                fields='\n    '.join(overwritten_fields),
+                body='\n    '.join(
+                    json.dumps(index_body, indent=4).splitlines(),
+                ),
+            ),
+            abort=True,
+        )
+
+    index_body_str = json.dumps(index_body)
+    return index_body_str
+
+
 @click.command()
 @click.argument('index_from')
 @click.argument('index_to')
@@ -178,7 +204,8 @@ def load_index_dump(yes_all, index_url, path_to_dump_dir):
     '-m',
     '--mapping',
     default=None,
-    help='Mapping file for the index.',
+    help='Mapping file for the index, you can repeat it for many.',
+    multiple=True,
 )
 @click.option(
     '-c',
@@ -188,15 +215,11 @@ def load_index_dump(yes_all, index_url, path_to_dump_dir):
 )
 def create_index(name, mapping, connect_url):
     cli = Elasticsearch([connect_url], verify_certs=False)
-    if mapping is None:
-        body = ''
-    else:
-        with open(mapping) as mapping_fd:
-            body = mapping_fd.read()
 
+    index_body_str = _merge_mapping_files(mapping_file_paths=mapping)
     cli.indices.create(
         index=name,
-        body=body,
+        body=index_body_str,
     )
 
 
@@ -239,13 +262,7 @@ def remap(mapping, index_url):
         index=orig_index
     ).get(orig_index, {}).get('aliases', {}).keys()
 
-    mappings = {}
-    for mapping_fname in mapping:
-        with open(mapping_fname) as mapping_fd:
-            mapping_dict = json.loads(mapping_fd.read())
-            mappings.update(mapping_dict['mappings'])
-
-    body = json.dumps({'mappings': mappings})
+    index_body_str = _merge_mapping_files(mapping_file_paths=mapping)
 
     click.echo(
         '(Re)Creating temporary index (mappings), named %s'
@@ -254,7 +271,7 @@ def remap(mapping, index_url):
     cli.indices.delete(index=tmp_index, ignore=[400, 404])
     cli.indices.create(
         index=tmp_index,
-        body=body,
+        body=index_body_str,
     )
 
     click.echo(
@@ -297,7 +314,7 @@ def remap(mapping, index_url):
 
     cli.indices.create(
         index=orig_index,
-        body=body,
+        body=index_body_str,
     )
 
     click.echo(

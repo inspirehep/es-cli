@@ -50,3 +50,69 @@ def test_split_index_url(index_url, expected):
     result = utils.split_index_url(index_url)
 
     assert result == expected
+
+
+@pytest.mark.parametrize(
+    'indices,expected',
+    [
+        [
+            [],
+            ({}, set()),
+        ],
+        [
+            [{'one': '1'}],
+            ({'one': '1'}, set()),
+        ],
+        [
+            [{'one': '1'}, {'two': '2'}],
+            ({'one': '1', 'two': '2'}, set()),
+        ],
+        [
+            [
+                {'mappings': {'one': '1'}},
+                {'mappings': {'two': '2'}},
+            ],
+            ({'mappings': {'one': '1', 'two': '2'}}, set()),
+        ],
+        [
+            [
+                {'mappings': {'one': '1', 'two': '2'}},
+                {'mappings': {'one': 'new1', 'four': '4'}},
+            ],
+            (
+                {
+                    'mappings': {'one': 'new1', 'two': '2', 'four': '4'},
+                },
+                set(['mappings.one']),
+            ),
+
+        ],
+        [
+            [
+                {'settings': {'one': '1', 'two': '2'}},
+                {'settings': {'one': 'new1', 'four': '4'}},
+            ],
+            (
+                {
+                    'settings': {'one': 'new1', 'four': '4'},
+                },
+                set(['settings']),
+            ),
+        ],
+    ],
+    ids=[
+        'merge no bodies return empty body',
+        'merge one body, returns a copy of it',
+        'merge two non-colliding (top level) indices',
+        'merge two non-colliding (first mappings level) indices',
+        'merge two colliding (first mappings level) indices',
+        'merge two colliding (top level) indices',
+    ]
+)
+def test_positive_merge_index_bodies(indices, expected):
+    result = utils.merge_index_bodies(indices)
+
+    assert result == expected
+    # make sure we always get a copy, not the actual object
+    if indices:
+        assert id(result[0]) != id(indices[0])
