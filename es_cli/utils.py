@@ -24,6 +24,7 @@
 # as an Intergovernmental Organization or submit itself to any jurisdiction.
 from __future__ import absolute_import, division, print_function
 
+import copy
 import json
 import os
 import re
@@ -392,3 +393,61 @@ def _try_to_migrate(index_from, index_to, cli, recid, error, yesall=False):
         error=error,
         yesall=yesall,
     )
+
+
+def _merge_mappings(base_mappings, to_merge_mappings):
+    merged_mappings = copy.deepcopy(base_mappings)
+    overwritten_mappings = []
+    for mapping_name, mapping_body in to_merge_mappings.items():
+        if mapping_name in base_mappings:
+            overwritten_mappings.append(mapping_name)
+
+        merged_mappings[mapping_name] = mapping_body
+
+    return merged_mappings, overwritten_mappings
+
+
+def _merge_two_index_bodies(base_index_body, to_merge_index_body):
+    merged_index_body = copy.deepcopy(base_index_body)
+    overwritten_fields = set()
+    for key in to_merge_index_body.keys():
+        if key == 'mappings':
+            (
+                merged_index_body['mappings'],
+                overwritten_mappings
+            ) = _merge_mappings(
+                base_index_body.get('mappings', {}),
+                to_merge_index_body.get('mappings', {}),
+            )
+            overwritten_fields = overwritten_fields.union(
+                set(
+                    'mappings.' + mapping_name
+                    for mapping_name in overwritten_mappings
+                )
+            )
+        else:
+            if key in base_index_body:
+                overwritten_fields.add(key)
+
+            merged_index_body[key] = to_merge_index_body[key]
+
+    return merged_index_body, overwritten_fields
+
+
+def merge_index_bodies(index_bodies):
+    if not index_bodies:
+        return {}, set()
+
+    base_index_body = index_bodies[0]
+
+    if len(index_bodies) < 2:
+        return copy.deepcopy(base_index_body), set()
+
+    merged_index_body = {}
+    for to_merge_index_body in index_bodies[1:]:
+        merged_index_body, overwritten_fields = _merge_two_index_bodies(
+            base_index_body,
+            to_merge_index_body,
+        )
+
+    return merged_index_body, overwritten_fields
