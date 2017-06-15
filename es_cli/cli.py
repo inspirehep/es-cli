@@ -252,8 +252,17 @@ def delete_index(name, connect_url):
     help='Mapping file for the index, you can repeat it for many.',
     multiple=True,
 )
+@click.option(
+    '-c',
+    '--chunk-size',
+    help=(
+        'Number of records per chunk to use, using more might increase speed, '
+        'but also might cause timeouts.'
+    ),
+    default=500,
+)
 @click.argument('index_url')
-def remap(mapping, index_url):
+def remap(mapping, chunk_size, index_url):
     connect_url, orig_index = utils.split_index_url(index_url)
     cli = Elasticsearch([connect_url], verify_certs=False)
     tmp_index = 'remapping_tmp_' + orig_index
@@ -287,7 +296,7 @@ def remap(mapping, index_url):
         target_index=tmp_index,
         query=None,
         target_client=None,
-        chunk_size=500,
+        chunk_size=chunk_size,
         scroll='5m',
         bulk_kwargs={
             'params': {
@@ -330,7 +339,7 @@ def remap(mapping, index_url):
         target_index=orig_index,
         query=None,
         target_client=None,
-        chunk_size=500,
+        chunk_size=chunk_size,
         scroll='5m',
         bulk_kwargs={
             'params': {
